@@ -197,6 +197,19 @@ in
       # process keeps its old configuration until something else restarts it.
       restartTriggers = [ configFile ] ++ lib.optional (otelConfigFile != null) otelConfigFile;
 
+      # In [Unit], not [Service]: systemd moved the start-rate-limit settings
+      # there in v229, and it merely logs "Unknown key ... ignoring" for the
+      # misplaced version -- so getting this wrong silently loses the retry
+      # behaviour rather than failing. Verified by finding exactly that line in
+      # the journal.
+      #
+      # Loading the certificate is fatal at startup on purpose, so that a
+      # listener never comes up unable to complete a handshake. Without the
+      # limit disabled, a host whose certificate is not issued yet would park
+      # the unit in "failed" after five quick attempts instead of retrying
+      # until it exists.
+      startLimitIntervalSec = 0;
+
       serviceConfig = {
         ExecStart = lib.concatStringsSep " " [
           "${cfg.package}/bin/systemd-unit-healthz"
@@ -209,11 +222,6 @@ in
 
         Restart = "always";
         RestartSec = "5s";
-        # Loading the certificate is fatal at startup on purpose, so that a
-        # listener never comes up unable to complete a handshake. Without
-        # disabling the start limit, a host whose ACME certificate is not issued
-        # yet would park the unit in "failed" instead of retrying until it is.
-        StartLimitIntervalSec = 0;
         TimeoutStopSec = "15s";
 
         AmbientCapabilities = lib.optional needsBindCapability "CAP_NET_BIND_SERVICE";
