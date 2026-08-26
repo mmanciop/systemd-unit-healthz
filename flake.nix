@@ -61,11 +61,11 @@
             pkgs.gopls
             pkgs.gotools
             pkgs.golangci-lint
-            pkgs.nixfmt-rfc-style
+            pkgs.nixfmt
           ];
         };
 
-        formatter = pkgs.nixfmt-rfc-style;
+        formatter = pkgs.nixfmt;
       }
     )
     // {
