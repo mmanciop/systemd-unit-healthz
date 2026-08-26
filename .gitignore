@@ -1,0 +1,9 @@
+# Go build output
+/systemd-unit-healthz
+
+# Nix
+result
+result-*
+
+# vendor/ is committed on purpose: the Nix build uses -mod=vendor so it needs
+# no network. Do not add it here.

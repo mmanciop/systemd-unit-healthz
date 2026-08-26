@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false # vendor/ is committed, so there is nothing to cache
+
+      - name: gofmt
+        # gofmt -l exits 0 whether or not it finds anything, so the emptiness of
+        # its output is the actual assertion.
+        run: |
+          unformatted="$(gofmt -l main.go internal)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet -mod=vendor ./...
+
+      - name: go test
+        run: go test -mod=vendor -race ./...
+
+      - name: build
+        run: go build -mod=vendor ./...
+
+  vendor:
+    # The likeliest way to break a consumer: edit go.mod without re-vendoring.
+    # The build there runs with -mod=vendor and fails on an inconsistent tree,
+    # long after this repo looked fine.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go.mod is tidy
+        run: go mod tidy -diff
+
+      - name: vendor/ is up to date
+        run: |
+          go mod vendor
+          if ! git diff --exit-code -- go.mod go.sum vendor; then
+            echo "vendor/ is stale; run 'go mod vendor' and commit the result" >&2
+            exit 1
+          fi
+
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: "experimental-features = nix-command flakes"
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+      - name: nix build
+        run: nix build --print-build-logs
