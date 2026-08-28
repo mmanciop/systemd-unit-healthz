@@ -47,6 +47,22 @@ It is used rather than Dependabot for one reason that decides it: Renovate updat
 Renovate also runs `go mod tidy` and `go mod vendor` after a Go bump, which the `vendor` CI job requires and which a hand-edited `go.mod` would fail.
 Its commits are `chore(deps): ...`, which the commit check accepts.
 
+Renovate updates `flake.lock` too, and nothing else is scheduled to do it.
+A dedicated workflow that builds the candidate pin before opening the pull request was considered and rejected: the `nix` CI job already builds every pull request, so a bad pin is a red pull request you close, and the workflow would have needed a personal access token to be mergeable at all.
+
+Update the pin by hand with the script Renovate's alternative would have used, which builds the new pin and restores the previous one when the build fails:
+
+```
+./packaging/nix/update-flake-lock.sh
+```
+
+Without a local Nix, run the `Nix flake lock` workflow instead.
+It is manual, it runs that same script, and it uploads `flake.lock` as an artifact for you to commit through a normal pull request, so it needs no token.
+
+> [!IMPORTANT]
+> A pull request opened with the default `GITHUB_TOKEN` starts no workflow.
+> Any automation added here that opens a pull request needs a personal access token, or the required checks on `main` never report and the pull request can never merge.
+
 > [!NOTE]
 > A Renovate subject longer than 72 characters fails the commit check on Renovate's own pull request.
 > Reword that one commit by hand, or lower `header-max-length` to a warning if it turns out to happen often.

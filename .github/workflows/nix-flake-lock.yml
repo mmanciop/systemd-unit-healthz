@@ -1,0 +1,33 @@
+name: Nix flake lock
+
+# Manual only. Renovate owns the recurring flake.lock updates; this exists to
+# produce the file on a machine that has Nix, for the bootstrap and for anyone
+# who needs to regenerate the pin without a local Nix installation.
+#
+# It uploads the result as an artifact rather than pushing a branch, so it needs
+# no token beyond the default read-only one: download the artifact, commit
+# flake.lock, and open a normal pull request.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: "experimental-features = nix-command flakes"
+
+      - name: update flake.lock
+        run: ./packaging/nix/update-flake-lock.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flake-lock
+          path: flake.lock
+          if-no-files-found: error

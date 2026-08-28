@@ -6,7 +6,8 @@
   "semanticCommitScope": "deps",
 
   "nix": {
-    "enabled": true
+    "enabled": true,
+    "description": "Updates the nixpkgs and flake-utils revisions in flake.lock. This is the reason for Renovate over Dependabot, which has no Nix support at all."
   },
 
   "postUpdateOptions": ["gomodTidy", "gomodVendor"],
