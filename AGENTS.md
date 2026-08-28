@@ -29,6 +29,28 @@ The body is optional and separated by a blank line.
 State why the change is needed and what it does differently, because the diff already states what changed.
 The prose rules below apply to the body too, so one sentence per line.
 
+The `commits` check on every pull request runs [commitlint](https://commitlint.js.org) against the rules in `.commitlintrc.yml`.
+Run it over your branch before you push:
+
+```
+npx -y @commitlint/cli --from origin/main --to HEAD --verbose
+```
+
+Two of the rules above are not machine-checkable, so they are on you.
+No linter can tell that a README-only change was typed as `chore` instead of `docs`, and none can tell present tense from a noun phrase: `feat: systemd unit health endpoint over HTTPS` passes commitlint and is still wrong.
+
+## Dependencies
+
+[Renovate](https://docs.renovatebot.com) opens the update pull requests, configured in `renovate.json`.
+It is used rather than Dependabot for one reason that decides it: Renovate updates `flake.lock`, and Dependabot has no Nix support at all, so half this repository's dependencies would go unwatched.
+
+Renovate also runs `go mod tidy` and `go mod vendor` after a Go bump, which the `vendor` CI job requires and which a hand-edited `go.mod` would fail.
+Its commits are `chore(deps): ...`, which the commit check accepts.
+
+> [!NOTE]
+> A Renovate subject longer than 72 characters fails the commit check on Renovate's own pull request.
+> Reword that one commit by hand, or lower `header-max-length` to a warning if it turns out to happen often.
+
 ## Documentation
 
 @README.md is the only user-facing document.
