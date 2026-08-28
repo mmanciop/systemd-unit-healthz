@@ -175,6 +175,9 @@ Lines carry `trace_id` and `span_id` when there is an active span.
   # in your NixOS configuration:
   imports = [ inputs.systemd-unit-healthz.nixosModules.default ];
 
+  # The module never touches the firewall, so open the port yourself.
+  networking.firewall.allowedTCPPorts = [ 443 ];
+
   services.systemd-unit-healthz = {
     enable = true;
     extraGroups = [ "acme" ];   # to read an ACME-managed key
@@ -202,21 +205,48 @@ Lines carry `trace_id` and `span_id` when there is an active span.
 ```
 
 The module creates a system user, renders both config files, and runs a hardened unit.
-Two details are load-bearing and easy to get wrong by hand:
+Three details are load-bearing and easy to get wrong by hand:
 
 - **Reading the TLS key** is a group-membership question.
-  An ACME-managed key is typically `0640` owned by the `acme` group, so put that group in `extraGroups`.
+  `security.acme` leaves the per-domain directory `0750 acme:acme` and `key.pem` `0640 acme:acme`, so `extraGroups = [ "acme" ];` is the entire read mechanism, for both the traversal into the directory and the key itself.
 - **Binding a port below 1024** needs `CAP_NET_BIND_SERVICE`.
   The module grants it only when `listen` names a privileged port.
+- **Opening that port** is yours to do.
+  The module deliberately does not write a `networking.firewall` rule, because a health endpoint reachable from the internet should be a line you wrote rather than a side effect of enabling a service.
 
-The token file has to be readable by the service user.
-`systemd.tmpfiles.rules` with a `z` line is the usual way to adjust an out-of-band secret's group without the module creating the secret:
+You do not need a `security.acme` `reloadServices` hook.
+The service re-stats the certificate and the key on its own, which is the job the nginx-plus-`reloadServices` pair used to do.
+
+### Making the token readable
+
+The token file has to be readable by the service user, and both halves of that are easy to miss.
+`systemd.tmpfiles.rules` adjusts a secret that something else provisioned, without the module ever creating the secret:
 
 ```nix
 systemd.tmpfiles.rules = [
+  "d /var/lib/secrets 0711 root root -"
   "z /var/lib/secrets/health-token 0640 root systemd-unit-healthz -"
 ];
 ```
+
+The `z` line is the obvious half: a token written by hand is `0600 root:root`, which the service user cannot read.
+`z` adjusts an existing path and never creates one, which is what you want for a secret that lives outside the repository.
+
+> [!IMPORTANT]
+> The `d` line is the half that is easy to miss.
+> A `/var/lib/secrets` left at `0700 root:root` blocks a non-root service from traversing into the directory at all, no matter what the file inside is set to, and the failure looks like a permission bug on the token rather than on its directory.
+> `0711` makes the directory traversable but not listable, and each file inside keeps protecting its own contents.
+
+### Naming the service in telemetry
+
+Give the endpoint its own `service.name` in `otelSettings`, distinct from the units it watches.
+The point of a separate identity is telling "the watched service is down" apart from "the probe is down", and reusing the watched unit's name throws exactly that distinction away.
+
+### The rest of the options
+
+`package` overrides the package to run.
+`user` and `group` rename the service account, which the module creates only when both are left at their default of `systemd-unit-healthz`.
+`logLevel` is `debug`, `info`, `warn`, or `error`, and defaults to `info`.
 
 ## Building
 
