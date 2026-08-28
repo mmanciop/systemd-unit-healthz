@@ -268,6 +268,10 @@ Run the tests alone, which is the fast loop while you edit Go code:
 go test ./...
 ```
 
+`flake.lock` is committed, so a build pins one nixpkgs revision rather than resolving `nixos-unstable` at whatever HEAD happens to be.
+Without it a build that worked yesterday can fail today with nothing changed here, which is indistinguishable from a real regression.
+Renovate moves the pin, and CI builds every move before it can merge.
+
 `vendor/` is committed and the package builds with `vendorHash = null`, so a build needs no network access and there is no hash to keep in sync.
 After changing dependencies, run `go mod tidy && go mod vendor` and commit the result.
 Continuous integration (CI) fails on a stale tree.
