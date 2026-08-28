@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", ":dependencyDashboard"],
+
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+
+  "nix": {
+    "enabled": true
+  },
+
+  "postUpdateOptions": ["gomodTidy", "gomodVendor"],
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "description": "One pull request for the actions, since they move together and each is a one-line bump."
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go dependencies",
+      "description": "Grouped because every Go bump also rewrites vendor/, and one large vendor diff is easier to review than five."
+    }
+  ]
+}
