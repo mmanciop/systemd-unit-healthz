@@ -1,0 +1,42 @@
+# Enforces the commit rules in AGENTS.md, which are the Semantic Commit Messages
+# gist: https://gist.github.com/joshbuchea/6f47e86d2510bce28f8e7f42ae84c716
+#
+# Run it over your branch before opening a pull request:
+#
+#   npx -y @commitlint/cli --from origin/main --to HEAD --verbose
+#
+# The rules are spelled out rather than pulled from @commitlint/config-conventional,
+# because commitlint resolves "extends" relative to this file and cannot find a
+# preset that npx installed elsewhere. Spelling them out keeps the one-line npx
+# invocation above working with no package.json in this repository.
+rules:
+  type-empty: [2, never]
+  type-case: [2, always, lower-case]
+
+  # The seven types the gist defines. config-conventional also allows build, ci,
+  # perf, and revert; this repository does not use them, so they are rejected
+  # here rather than left as a silent second vocabulary.
+  type-enum:
+    - 2
+    - always
+    - [feat, fix, docs, style, refactor, test, chore]
+
+  scope-case: [2, always, lower-case]
+
+  subject-empty: [2, never]
+
+  # Rejects "Add the reload timer" while leaving "improve README" alone, because
+  # there the capital belongs to the name rather than to a sentence opening.
+  subject-case:
+    - 2
+    - never
+    - [sentence-case, start-case, pascal-case, upper-case]
+
+  subject-full-stop: [2, never, "."]
+
+  # config-conventional allows 100. A subject that fits in 72 stays readable in
+  # git log --oneline and in the GitHub commit list.
+  header-max-length: [2, always, 72]
+
+  body-leading-blank: [2, always]
+  footer-leading-blank: [2, always]

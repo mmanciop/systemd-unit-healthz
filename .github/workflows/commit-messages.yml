@@ -1,0 +1,29 @@
+name: Commit messages
+
+# Only on pull requests: the check needs a base and a head to diff, and it is a
+# merge gate rather than something to re-run against main after the fact.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The default shallow clone does not contain the base commit, so the
+          # range would be unresolvable.
+          fetch-depth: 0
+
+      - name: commitlint
+        env:
+          # Read through the environment rather than interpolated into the shell,
+          # so nothing from the pull request becomes part of the command.
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # Node is preinstalled on the runner, and the rules live in
+        # .commitlintrc.yml, so this needs no package.json and no lock file.
+        run: npx -y @commitlint/cli@19 --from "$BASE" --to "$HEAD" --verbose
