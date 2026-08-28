@@ -116,7 +116,7 @@ Write section headers in sentence case, e.g., "Running it on NixOS".
 - **One independent command per code block.**
   Do not stack unrelated commands inside the same ` ```bash ` block.
   A reader's "copy" action should never grab more than one thing they intended to run.
-  Exceptions: a multi-line invocation continued with `\`, a `key=value` env-var prefix followed by the command, or a pipeline (`curl … | jq`) — those are a *single* command.
+  Exceptions: a multi-line invocation continued with `\`, a `key=value` env-var prefix followed by the command, or a pipeline (`curl ... | jq`) — those are a *single* command.
   Workflows that genuinely involve several steps use one code block per step, with prose between them describing what the previous step accomplished and what the next one does.
 - A YAML or Nix example is a whole configuration, so one block is correct even when it sets many keys.
   Use an end-of-line comment to give a default or a unit, e.g. `listen: ":443"  # default ":8443"`.
