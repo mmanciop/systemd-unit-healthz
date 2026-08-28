@@ -84,20 +84,17 @@ On any other address it needs `allowPublicUnauthenticated: true` as well, so tha
 The certificate and key are re-read at most once per `reloadInterval`, from the request path, and reloaded when either file changes.
 A failed reload keeps serving the last good certificate, so a renewal caught mid-write cannot take the endpoint down.
 
-Polling rather than watching, deliberately.
-An Automatic Certificate Management Environment (ACME) client replaces the inode on renewal, which kills a watch on the file and forces you to watch the directory instead.
-Inotify watches also fail silently once the per-user limit is reached.
+Polling rather than watching is deliberate.
+In my setup, I have an Automatic Certificate Management Environment (ACME) client that replaces the inode on renewal, which kills a watch on the file and forces the to watch on the directory instead.
+(Inotify watches also fail silently once the per-user limit is reached.)
 An unconditional `stat` every 30 seconds recovers from both on its own.
 
-The initial load is fatal.
-A listener that cannot complete a handshake is worse than one that is not up yet, and `Restart=always` plus `StartLimitIntervalSec=0` in the unit means the service retries until the certificate exists.
+A failure to load the certificate on process bootstrap is fatal.
+Retries are delegated to the init system.
 
 ## Telemetry
 
-Telemetry is contingent on `telemetry.configFile`.
-With no file, no OpenTelemetry software development kit (SDK) is installed, the global providers stay the API's no-ops, and everything else works normally.
-
-The file follows the [OpenTelemetry declarative configuration](https://github.com/open-telemetry/opentelemetry-configuration) schema and is parsed with [`otelconf`](https://pkg.go.dev/go.opentelemetry.io/contrib/otelconf):
+The OpenTelemetry setup is opt-in via the `telemetry.configFile` option, which needs to point to a file following the [OpenTelemetry declarative configuration](https://github.com/open-telemetry/opentelemetry-configuration) schema:
 
 ```yaml
 file_format: "1.0-rc.2"
@@ -138,7 +135,7 @@ meter_provider:
 | `http.server.active_requests` | up-down counter | — |
 
 The `http.server.*` names and `error.type` come from the [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/).
-The `systemd.*` names are project-specific, because the semantic conventions define nothing for systemd units.
+The `systemd.*` names are project-specific, because OpenTelemetry semantic conventions currently define nothing for systemd units.
 
 `systemd.unit.state` is a state set: `1` for the unit's current `ActiveState` and `0` for each of the other 5.
 The explicit zeros are the point.
