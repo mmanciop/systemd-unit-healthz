@@ -1,8 +1,11 @@
 # systemd-unit-healthz
 
-Serves the state of systemd units as JSON over HTTPS, so an external health check can poll it.
+The `systemd-unit-healthz` program serves the state of systemd units as JSON over HTTPS, so an external health check (like [Dash0's synthetic checks](https://www.dash0.com/synthetic-monitoring)) can poll it.
+The HTTP server terminates TLS and require authentication via a shared secret.
+The health status of the systemd units are read over DBus.
+[OpenTelemetry](http://opentelemetry.io/) instrumentation is opt-in via [declarative configuration](https://github.com/open-telemetry/opentelemetry-configuration).
 
-It reads unit state over the D-Bus system bus, terminates TLS itself, and checks a shared secret itself. There is no reverse proxy to configure and no socket activation. OpenTelemetry instrumentation is included, configured declaratively, and off unless you configure it.
+The responses look as follows:
 
 ```
 $ curl -s -H 'X-Health-Token: …' https://example.org/healthz | jq
@@ -29,9 +32,9 @@ A unit is healthy when its `ActiveState` is `active` **and** its `SubState` is `
 The response is the instantaneous truth. There is no debouncing, no grace period, and no maintenance window — a unit restarting is reported as down, because it is. Smoothing belongs in whatever alerts on this, where the thresholds live.
 
 > [!IMPORTANT]
-> This reports what systemd knows, which is whether the process is running — not whether it is serving. A wedged process that holds its main PID looks healthy here.
+> This reports what systemd knows, which is whether the process is running — not whether it is serving. A stuck process that holds its main PID looks healthy to systemd and `systemd-unit-healthz`.
 
-`units` follows configuration order, and that is part of the contract: JSONPath assertions index into the array.
+The `units` appear in the order they are configured, so that JSONPath assertions index into the array.
 
 A unit that cannot be read at all — no such unit, or a D-Bus failure — is reported with `"healthy": false` and an `error` string, which is distinguishable from a unit that is legitimately stopped.
 
