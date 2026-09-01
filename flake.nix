@@ -16,7 +16,7 @@
       # Keep in sync with the release tag. It feeds the -X main.version ldflag,
       # and is passed explicitly to every callPackage below so that the flake
       # and the overlay can never disagree about it.
-      version = "0.1.0";
+      version = "0.1.1";
     in
     flake-utils.lib.eachDefaultSystem (
       system:
