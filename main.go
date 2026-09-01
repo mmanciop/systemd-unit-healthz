@@ -76,7 +76,9 @@ func run(logger *slog.Logger, configPath string) error {
 	prober := unitprobe.New()
 	defer prober.Close()
 
-	probe := instrumentedProbe(cfg, prober, tel, logger)
+	// Traced: each of these is caused by an inbound request, so its span
+	// belongs in that request's trace.
+	probe := instrumentedProbe(cfg, prober, tel, logger, true)
 
 	handler := health.New(cfg.Units, probe, tel.Tracer)
 
@@ -88,8 +90,10 @@ func run(logger *slog.Logger, configPath string) error {
 	// Sampling on a timer as well as per request: the metrics have to exist
 	// when nobody is polling, or an absence-based alert has nothing to go on and
 	// a restart between two polls leaves no trace at all.
+	//
+	// Untraced, deliberately -- see instrumentedProbe.
 	if interval := cfg.SampleInterval.Duration(); interval > 0 {
-		go sampleForever(ctx, interval, probe)
+		go sampleForever(ctx, interval, instrumentedProbe(cfg, prober, tel, logger, false))
 	}
 
 	serveErr := srv.Serve(ctx)
@@ -105,34 +109,47 @@ func run(logger *slog.Logger, configPath string) error {
 	return serveErr
 }
 
-// instrumentedProbe wraps the prober in a timeout, a client span, and the
-// metric recording that both callers share.
+// instrumentedProbe wraps the prober in a timeout, the metric recording both
+// callers share, and -- only when traced -- a client span.
+//
+// traced is a parameter rather than something inferred inside, because the two
+// callers want different things and the difference should be visible at the
+// call site. A request-driven probe belongs in the trace of the request that
+// caused it. The background sampler has no caller: a span for it would be a
+// CLIENT span at the root of its own trace, once per tick, carrying nothing
+// the metrics do not already carry.
 func instrumentedProbe(
 	cfg *config.Config,
 	prober unitprobe.Prober,
 	tel *telemetry.Telemetry,
 	logger *slog.Logger,
+	traced bool,
 ) func(context.Context) []unitprobe.Status {
 	return func(ctx context.Context) []unitprobe.Status {
 		ctx, cancel := context.WithTimeout(ctx, cfg.ProbeTimeout.Duration())
 		defer cancel()
 
-		// The rpc.* attributes are what get this classified as a client call
-		// rather than an unlabelled internal span. rpc.system is an open enum,
-		// so "dbus" is a legitimate value.
-		ctx, span := tel.Tracer.Start(ctx, "org.freedesktop.systemd1.Manager/GetUnitProperties",
-			trace.WithSpanKind(trace.SpanKindClient),
-			trace.WithAttributes(
-				attribute.String("rpc.system", "dbus"),
-				attribute.String("rpc.service", "org.freedesktop.systemd1.Manager"),
-				attribute.String("rpc.method", "GetUnitProperties"),
-				attribute.String("network.transport", "unix"),
-				attribute.String("network.peer.address", "/run/dbus/system_bus_socket"),
-			))
-		defer span.End()
+		var span trace.Span
+		if traced {
+			// The rpc.* attributes are what get this classified as a client
+			// call rather than an unlabelled internal span. rpc.system is an
+			// open enum, so "dbus" is a legitimate value.
+			ctx, span = tel.Tracer.Start(ctx, "org.freedesktop.systemd1.Manager/GetUnitProperties",
+				trace.WithSpanKind(trace.SpanKindClient),
+				trace.WithAttributes(
+					attribute.String("rpc.system", "dbus"),
+					attribute.String("rpc.service", "org.freedesktop.systemd1.Manager"),
+					attribute.String("rpc.method", "GetUnitProperties"),
+					attribute.String("network.transport", "unix"),
+					attribute.String("network.peer.address", "/run/dbus/system_bus_socket"),
+				))
+			defer span.End()
+		}
 
 		statuses := prober.Probe(ctx, cfg.Units)
-		span.SetAttributes(health.UnitAttributes(statuses)...)
+		if span != nil {
+			span.SetAttributes(health.UnitAttributes(statuses)...)
+		}
 
 		for _, st := range statuses {
 			if st.Err != nil {
