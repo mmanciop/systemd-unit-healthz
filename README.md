@@ -153,7 +153,9 @@ Without the timer they would only exist while something was polling, which makes
 
 ### Traces
 
-The request handler emits a server span, and each probe cycle a client span named `org.freedesktop.systemd1.Manager/GetUnitProperties` with `rpc.*` attributes.
+The request handler emits a server span, and the probe it triggers a child client span named `org.freedesktop.systemd1.Manager/GetUnitProperties` with `rpc.*` attributes.
+Only request-driven probes are traced.
+The `sampleInterval` timer records metrics and starts no span, because a background probe has no caller: its span would be a client span at the root of its own trace, once per tick, carrying nothing the metrics do not already carry.
 Requests carrying no credential at all are filtered out of tracing: internet background noise should not become telemetry spend.
 A request with a *wrong* credential is traced, because that is a real signal.
 
