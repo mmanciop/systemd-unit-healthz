@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,10 +20,24 @@ import (
 	"github.com/mmanciop/systemd-unit-healthz/internal/unitprobe"
 )
 
-type fakeProber struct{ calls int }
+// fakeProber is read from the test while the sampler goroutine probes, so the
+// call count is behind a mutex.
+type fakeProber struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *fakeProber) Calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
 
 func (f *fakeProber) Probe(_ context.Context, units []string) []unitprobe.Status {
+	f.mu.Lock()
 	f.calls++
+	f.mu.Unlock()
+
 	out := make([]unitprobe.Status, 0, len(units))
 	for _, u := range units {
 		out = append(out, unitprobe.Status{
@@ -86,24 +101,58 @@ func metricNames(t *testing.T, reader *sdkmetric.ManualReader) map[string]bool {
 // The background sampler has no caller, so a span for it would be a CLIENT
 // span at the root of its own trace, once per tick. It still has to record
 // metrics -- that is the entire reason the sampler exists.
-func TestUntracedProbeRecordsMetricsWithoutSpans(t *testing.T) {
+//
+// This goes through startSampler rather than calling instrumentedProbe
+// directly, so that wiring the sampler back up to a traced probe fails here.
+func TestSamplerRecordsMetricsWithoutSpans(t *testing.T) {
 	_, recorder, reader, tel, cfg, prober := probeHarness(t)
+	cfg.SampleInterval = config.Duration(time.Millisecond)
 
-	probe := instrumentedProbe(cfg, prober, tel, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), false)
-	probe(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startSampler(ctx, cfg, prober, tel, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
 
-	if prober.calls != 1 {
-		t.Fatalf("prober called %d times, want 1", prober.calls)
-	}
-	if spans := recorder.Ended(); len(spans) != 0 {
-		t.Errorf("untraced probe produced %d span(s), want none: %v", len(spans), spans[0].Name())
-	}
-
-	names := metricNames(t, reader)
-	for _, want := range []string{"systemd.unit.active", "systemd.unit.state", "systemd.unit.uptime"} {
-		if !names[want] {
-			t.Errorf("untraced probe did not record %s; recorded: %v", want, names)
+	// Wait for the metrics rather than for the probe call, let alone a fixed
+	// sleep: the call count goes up before the probe has recorded anything.
+	want := []string{"systemd.unit.active", "systemd.unit.state", "systemd.unit.uptime"}
+	var names map[string]bool
+	deadline := time.After(5 * time.Second)
+	for !hasAll(names, want) {
+		select {
+		case <-deadline:
+			t.Fatalf("sampler recorded %v after %d probe(s), want %v", names, prober.Calls(), want)
+		case <-time.After(time.Millisecond):
+			names = metricNames(t, reader)
 		}
+	}
+	cancel()
+
+	if spans := recorder.Ended(); len(spans) != 0 {
+		t.Errorf("sampler produced %d span(s), want none: %s", len(spans), spans[0].Name())
+	}
+}
+
+func hasAll(names map[string]bool, want []string) bool {
+	for _, w := range want {
+		if !names[w] {
+			return false
+		}
+	}
+	return true
+}
+
+// A zero interval means no sampler at all, so nothing probes in the background.
+func TestSamplerDisabledWhenIntervalIsZero(t *testing.T) {
+	_, _, _, tel, cfg, prober := probeHarness(t)
+	cfg.SampleInterval = 0
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startSampler(ctx, cfg, prober, tel, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+
+	time.Sleep(50 * time.Millisecond)
+	if got := prober.Calls(); got != 0 {
+		t.Errorf("sampler probed %d times with no interval configured, want 0", got)
 	}
 }
 
