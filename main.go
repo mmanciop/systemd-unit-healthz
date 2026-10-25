@@ -87,14 +87,7 @@ func run(logger *slog.Logger, configPath string) error {
 		return err
 	}
 
-	// Sampling on a timer as well as per request: the metrics have to exist
-	// when nobody is polling, or an absence-based alert has nothing to go on and
-	// a restart between two polls leaves no trace at all.
-	//
-	// Untraced, deliberately -- see instrumentedProbe.
-	if interval := cfg.SampleInterval.Duration(); interval > 0 {
-		go sampleForever(ctx, interval, instrumentedProbe(cfg, prober, tel, logger, false))
-	}
+	startSampler(ctx, cfg, prober, tel, logger)
 
 	serveErr := srv.Serve(ctx)
 
@@ -107,6 +100,29 @@ func run(logger *slog.Logger, configPath string) error {
 	}
 
 	return serveErr
+}
+
+// startSampler starts the background sampler, if one is configured.
+//
+// Sampling on a timer as well as per request: the metrics have to exist when
+// nobody is polling, or an absence-based alert has nothing to go on and a
+// restart between two polls leaves no trace at all.
+//
+// The probe is untraced, deliberately -- see instrumentedProbe. This is a
+// function rather than three lines in run so that a test can exercise the
+// sampler the way run wires it, rather than a lookalike built in the test.
+func startSampler(
+	ctx context.Context,
+	cfg *config.Config,
+	prober unitprobe.Prober,
+	tel *telemetry.Telemetry,
+	logger *slog.Logger,
+) {
+	interval := cfg.SampleInterval.Duration()
+	if interval <= 0 {
+		return
+	}
+	go sampleForever(ctx, interval, instrumentedProbe(cfg, prober, tel, logger, false))
 }
 
 // instrumentedProbe wraps the prober in a timeout, the metric recording both
